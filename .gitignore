@@ -1,0 +1,9 @@
+#Ignore all zip and chromedriver files
+chromedriver
+*.zip
+
+#Ignore local notes file
+*notes.txt
+
+#Ignore log files
+*.log
