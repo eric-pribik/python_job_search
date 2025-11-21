@@ -3,7 +3,16 @@ chromedriver
 *.zip
 
 #Ignore local notes file
-*notes.txt
+*notes*
 
 #Ignore log files
 *.log
+
+#Ignore secrets File
+*secrets*
+
+#Ignore test files
+*test*
+
+#Ignore cookie files
+*cookies*
