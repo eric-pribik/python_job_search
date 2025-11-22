@@ -5,7 +5,10 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-#from secrets import secrets
+from selenium.webdriver import Remote, ChromeOptions as Options
+from selenium.webdriver.chromium.remote_connection import ChromiumRemoteConnection as Connection
+from os import environ
+import my_secrets
 import pandas as pd
 import json
 import os
@@ -18,6 +21,12 @@ from zipfile import ZipFile
 
 GOOGLE_SEARCH_PAGE_LIMIT = 30
 USE_API_BROWSER = False
+TARGET_URL = environ.get('TARGET_URL', default='https://Google.com')
+BRIGHTHOUSE_AUTH = my_secrets.BRIGHTHOUSE_AUTH
+BRIGHTHOUSE_USERNAME = my_secrets.BRIGHTHOUSE_USERNAME
+BRIGHTHOUSE_PASSWORD = my_secrets.BRIGHTHOUSE_PASSWORD
+BRIGHTDATA_HOST = my_secrets.BRIGHTDATA_HOST
+BRIGHTHOUSE_PORT = my_secrets.BRIGHTHOUSE_PORT
 
 #Might have to be moved into main() after chromedriver check
 service = Service(executable_path="chromedriver")
@@ -65,7 +74,7 @@ def get_chromedriver():
     else:
         print(f"Error downloading file: {response.status_code}\nPlease try again.")
 
-def initiate_google_search(ats_url, job_keyword, location):
+def initiate_local_google_search(ats_url, job_keyword, location):
     '''
     Starts a new web session, imports any browser cookies you wish to import, and 
     initiates a google search with the keywords you selected.
@@ -90,6 +99,27 @@ def initiate_google_search(ats_url, job_keyword, location):
     WebDriverWait(driver, 60).until(
         EC.presence_of_element_located((By.CLASS_NAME, "zReHs"))
     )
+
+def initiate_api_google_search(url=TARGET_URL):
+    if BRIGHTHOUSE_AUTH == f'{BRIGHTHOUSE_USERNAME}:{BRIGHTHOUSE_PASSWORD}':
+        raise Exception('Provide Scraping Browsers credentials in AUTH '
+                        'environment variable or update the script.')
+    print('Connecting to Browser...')
+    server_addr = f'https://{BRIGHTHOUSE_USERNAME}:{BRIGHTHOUSE_PASSWORD}@{BRIGHTDATA_HOST}:{BRIGHTHOUSE_PORT}'
+    connection = Connection(server_addr, 'goog', 'chrome')
+    driver = Remote(connection, options=Options())
+    try:
+        print(f'Connected! Navigating to {url}...')
+        driver.get(url)
+        print('Navigated! Waiting captcha to detect and solve...')
+        result = driver.execute('executeCdpCommand', {
+            'cmd': 'Captcha.waitForSolve',
+            'params': {'detectTimeout': 10 * 1000},
+        })
+        status = result['value']['status']
+        print(f'Captcha status: {status}')
+    finally:
+        driver.quit()
 
 def scrape_webpage():
     '''
@@ -142,6 +172,13 @@ def select_next_page(page_limit):
         print(f"Reached maximum Google result's set at page: {current_page_element}.")
         return "END"
 
+def start_next_search(ats_url, job_keyword, location):
+    input_element = driver.find_element(By.CLASS_NAME, "gLFyf")
+    input_element.clear()
+    time.sleep(1)
+    #Types in the search query and hits enter, waits 60 seconds in case of CAPTCHA
+    input_element.send_keys(f"site:{ats_url} {job_keyword} {location} {Keys.ENTER}")
+
 def main():
     #Checks if chromedriver exists and if not downloads file
     chromedriver_exists = os.path.exists("./chromedriver")
@@ -154,7 +191,7 @@ def main():
     for x in ats_search_queries["search"]["ats_urls"][x]["domain"]:
         for y in ats_search_queries["search"]["job_keywords"]["job_titles"][y]["roles"]:
             for z in ats_search_queries["search"]["location_keywords"][z]["remote"]:
-                initiate_google_search(x, y, z)
+                initiate_local_google_search(x, y, z)
                 while current_page != "END":
                     a = scrape_webpage()
                     search_results.update(a)
